@@ -291,7 +291,7 @@ class BlockingConnection(object):  # pylint: disable=R0902
         'BlockingConnection__OnChannelOpenedArgs',
         'channel')
 
-    def __init__(self, parameters=None, _impl_class=None):
+    def __init__(self, parameters=None, _impl_class=None, exception_on_event=False):
         """Create a new instance of the Connection object.
 
         :param pika.connection.Parameters parameters: Connection parameters
@@ -336,7 +336,19 @@ class BlockingConnection(object):  # pylint: disable=R0902
             on_close_callback=self._closed_result.set_value_once,
             stop_ioloop_on_close=False)
 
+        # Setup internal event callbacks
+        self._blocked = False
+        if exception_on_event:
+            self.add_on_connection_blocked_callback(self._block)
+            self.add_on_connection_unblocked_callback(self._unblock)
+
         self._process_io_for_connection_setup()
+
+    def _block(self, method):
+        self._blocked = True
+
+    def _unblock(self, method):
+        self._blocked = False
 
     def _cleanup(self):
         """Clean up members that might inhibit garbage collection"""
@@ -401,13 +413,16 @@ class BlockingConnection(object):  # pylint: disable=R0902
         #         OR
         #   empty outbound buffer and any waiter is ready
         is_done = (lambda:
-            self._ready_events or
             self._closed_result.ready or
             (not self._impl.outbound_buffer and
              (not waiters or any(ready() for ready in  waiters))))
 
-        # Process I/O until our completion condition is satisified
+        # Process I/O and events until our completion condition is satisified
         while not is_done():
+            if self._ready_events:
+                self._dispatch_connection_events()
+            if self._blocked:
+                raise exceptions.BlockedException()
             self._impl.ioloop.poll()
             self._impl.ioloop.process_timeouts()
 

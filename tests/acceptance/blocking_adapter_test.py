@@ -367,13 +367,11 @@ class TestConsumeOnBlockedConnection(BlockingTestCaseBase):
 
     def test(self):
         """Process events when entering consume() loop."""
-        connection = self._connect()
+        connection = self._connect(url=DEFAULT_URL + '&exception_on_event=1')
         ch = connection.channel()
 
-        # Create a Connection.Blocked event on connection.
-        blocked_buffer = []
         connection._on_connection_blocked(
-            user_callback=lambda f: blocked_buffer.append("blocked"),
+            user_callback=connection._block,
             method_frame=pika.frame.Method(
                 1, pika.spec.Connection.Blocked('reason'))
         )
@@ -388,11 +386,13 @@ class TestConsumeOnBlockedConnection(BlockingTestCaseBase):
 
             q_name = 'TestConsumeOnBlockedConnection_q' + uuid.uuid1().hex
 
-            # If everything goes right, this should not hang.
-            for msg in ch.consume(q_name, no_ack=False, inactivity_timeout=1):
-                break
+            with self.assertRaises(pika.exceptions.BlockedException):
+                # If everything goes right, this should not hang.
+                for msg in ch.consume(q_name, no_ack=False, inactivity_timeout=1):
+                    break
 
-        self.assertEqual(blocked_buffer, ["blocked"])
+        # Unblock for clean disconnect
+        connection._unblock(method={})
 
 
 class TestAddTimeoutRemoveTimeout(BlockingTestCaseBase):
