@@ -408,10 +408,16 @@ class BlockingConnection(object):  # pylint: disable=R0902
             (not self._impl.outbound_buffer and
              (not waiters or any(ready() for ready in  waiters))))
 
-        # Process I/O until our completion condition is satisified
-        while not is_done():
-            self._impl.ioloop.poll()
-            self._impl.ioloop.process_timeouts()
+        while True:
+            # Process I/O until our completion condition is satisified
+            while not is_done():
+                self._impl.ioloop.poll()
+                self._impl.ioloop.process_timeouts()
+
+            if self._ready_events:
+                self._dispatch_connection_events()
+            else:
+                break
 
         if self._closed_result.ready:
             try:
