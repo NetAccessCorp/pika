@@ -401,6 +401,7 @@ class BlockingConnection(object):  # pylint: disable=R0902
         #         OR
         #   empty outbound buffer and any waiter is ready
         is_done = (lambda:
+            self._ready_events or
             self._closed_result.ready or
             (not self._impl.outbound_buffer and
              (not waiters or any(ready() for ready in  waiters))))

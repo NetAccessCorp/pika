@@ -7,6 +7,10 @@ try:
     import unittest2 as unittest
 except ImportError:
     import unittest
+try:
+    import mock
+except ImportError:
+    from unittest import mock
 
 import uuid
 
@@ -356,6 +360,39 @@ class TestConnectionBlockAndUnblock(BlockingTestCaseBase):
         repr(evt)
         evt.dispatch()
         self.assertEqual(unblocked_buffer, ["unblocked"])
+
+
+class TestConsumeOnBlockedConnection(BlockingTestCaseBase):
+    TIMEOUT = 3
+
+    def test(self):
+        """Process events when entering consume() loop."""
+        connection = self._connect()
+        ch = connection.channel()
+
+        # Create a Connection.Blocked event on connection.
+        blocked_buffer = []
+        connection._on_connection_blocked(
+            user_callback=lambda f: blocked_buffer.append("blocked"),
+            method_frame=pika.frame.Method(
+                1, pika.spec.Connection.Blocked('reason'))
+        )
+
+        # Mock the _rpc method to simulate RabbitMQ not replying
+        # to publish due to the connection being blocked already.
+        def new_rpc(method_frame, callback=None, acceptable_replies=None):
+            pass
+
+        with mock.patch.object(ch._impl, '_rpc') as mock_rpc:
+            mock_rpc.side_effect = new_rpc
+
+            q_name = 'TestConsumeOnBlockedConnection_q' + uuid.uuid1().hex
+
+            # If everything goes right, this should not hang.
+            for msg in ch.consume(q_name, no_ack=False, inactivity_timeout=1):
+                break
+
+        self.assertEqual(blocked_buffer, ["blocked"])
 
 
 class TestAddTimeoutRemoveTimeout(BlockingTestCaseBase):
