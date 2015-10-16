@@ -416,23 +416,19 @@ class BlockingConnection(object):  # pylint: disable=R0902
         #   empty outbound buffer and any waiter is ready
 
         is_done = (lambda:
-            self._ready_events or
             self._closed_result.ready or
             (not self._impl.outbound_buffer and
              (not waiters or any(ready() for ready in  waiters))))
 
         # Process I/O until our completion condition is satisified and
         # all events have been processed.
-        while True:
-            while not is_done():
-                if self._blocked:
-                    raise exceptions.BlockedException()
-                self._impl.ioloop.poll()
-                self._impl.ioloop.process_timeouts()
+        while not is_done():
             if self._ready_events:
                 self._dispatch_connection_events()
-            else:
-                break
+            if self._blocked:
+                raise exceptions.BlockedException()
+            self._impl.ioloop.poll()
+            self._impl.ioloop.process_timeouts()
 
         if self._closed_result.ready:
             try:
