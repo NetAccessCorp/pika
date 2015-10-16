@@ -407,8 +407,6 @@ class BlockingConnection(object):  # pylint: disable=R0902
             raise exceptions.ConnectionClosed()
 
         # Conditions for terminating the processing loop:
-        #   new event is ready
-        #         OR
         #   connection closed
         #         OR
         #   empty outbound buffer and no waiters
