@@ -66,6 +66,16 @@ class ConnectionClosed(AMQPConnectionError):
             return 'The AMQP connection was closed: %s' % (self.args,)
 
 
+class BlockedException(AMQPConnectionError):
+    """This exception is raised when a connection gets blocked by RabbitMQ
+
+    Used by BlockingConnection
+    """
+
+    def __repr__(self):
+        return 'The connection has been blocked by RabbitMQ'
+
+
 class AMQPChannelError(AMQPError):
 
     def __repr__(self):

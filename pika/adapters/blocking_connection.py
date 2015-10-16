@@ -291,7 +291,7 @@ class BlockingConnection(object):  # pylint: disable=R0902
         'BlockingConnection__OnChannelOpenedArgs',
         'channel')
 
-    def __init__(self, parameters=None, _impl_class=None):
+    def __init__(self, parameters=None, _impl_class=None, exception_on_event=False):
         """Create a new instance of the Connection object.
 
         :param pika.connection.Parameters parameters: Connection parameters
@@ -336,7 +336,19 @@ class BlockingConnection(object):  # pylint: disable=R0902
             on_close_callback=self._closed_result.set_value_once,
             stop_ioloop_on_close=False)
 
+        # Setup internal event callbacks
+        self._blocked = False
+        if exception_on_event:
+            self.add_on_connection_blocked_callback(self._block)
+            self.add_on_connection_unblocked_callback(self._unblock)
+
         self._process_io_for_connection_setup()
+
+    def _block(self, method):
+        self._blocked = True
+
+    def _unblock(self, method):
+        self._blocked = False
 
     def _cleanup(self):
         """Clean up members that might inhibit garbage collection"""
@@ -395,25 +407,28 @@ class BlockingConnection(object):  # pylint: disable=R0902
             raise exceptions.ConnectionClosed()
 
         # Conditions for terminating the processing loop:
-        #   there are ready events
+        #   new event is ready
         #         OR
         #   connection closed
         #         OR
         #   empty outbound buffer and no waiters
         #         OR
         #   empty outbound buffer and any waiter is ready
+
         is_done = (lambda:
             self._ready_events or
             self._closed_result.ready or
             (not self._impl.outbound_buffer and
              (not waiters or any(ready() for ready in  waiters))))
 
+        # Process I/O until our completion condition is satisified and
+        # all events have been processed.
         while True:
-            # Process I/O until our completion condition is satisified
             while not is_done():
+                if self._blocked:
+                    raise exceptions.BlockedException()
                 self._impl.ioloop.poll()
                 self._impl.ioloop.process_timeouts()
-
             if self._ready_events:
                 self._dispatch_connection_events()
             else:
@@ -690,7 +705,7 @@ class BlockingConnection(object):  # pylint: disable=R0902
         specify but it is recommended that you let Pika manage the channel
         numbers.
 
-        :rtype: pika.adapters.blocking_connection.BlockingChannel
+        :rtype: pika.synchronous_connection.BlockingChannel
         """
         with _CallbackResult(self._OnChannelOpenedArgs) as opened_args:
             impl_channel = self._impl.channel(
@@ -1822,7 +1837,7 @@ class BlockingChannel(object):  # pylint: disable=R0904,R0902
 
     def get_waiting_message_count(self):
         """Returns the number of messages that may be retrieved from the current
-        queue consumer generator via `BlockingChannel.consume` without blocking.
+        queue consumer generator via `BasicChannel.consume` without blocking.
         NEW in pika 0.10.0
 
         :rtype: int
@@ -1956,7 +1971,7 @@ class BlockingChannel(object):  # pylint: disable=R0904,R0902
         Returns a boolean value indicating the success of the operation.
 
         This is the legacy BlockingChannel method for publishing. See also
-        `BlockingChannel.publish` that provides more information about failures.
+        `BasicChannel.publish` that provides more information about failures.
 
         For more information on basic_publish and what the parameters do, see:
 
