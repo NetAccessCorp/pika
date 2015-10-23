@@ -336,18 +336,18 @@ class BlockingConnection(object):  # pylint: disable=R0902
             on_close_callback=self._closed_result.set_value_once,
             stop_ioloop_on_close=False)
 
-        # Setup internal event callbacks
+        # Set to True when block event is received, back to False on unblock
         self._blocked = False
-        if exception_on_event:
-            self.add_on_connection_blocked_callback(self._block)
-            self.add_on_connection_unblocked_callback(self._unblock)
+        self._exception_on_event = exception_on_event
 
         self._process_io_for_connection_setup()
 
-    def _block(self, method):
+    def _block(self):
         self._blocked = True
+        self._cleanup()
+        raise exceptions.BlockedException()
 
-    def _unblock(self, method):
+    def _unblock(self):
         self._blocked = False
 
     def _cleanup(self):
@@ -417,12 +417,8 @@ class BlockingConnection(object):  # pylint: disable=R0902
             (not self._impl.outbound_buffer and
              (not waiters or any(ready() for ready in  waiters))))
 
-        # Process I/O and events until our completion condition is satisified
+        # Process I/O until our completion condition is satisified
         while not is_done():
-            if self._ready_events:
-                self._dispatch_connection_events()
-            if self._blocked:
-                raise exceptions.BlockedException()
             self._impl.ioloop.poll()
             self._impl.ioloop.process_timeouts()
 
@@ -500,6 +496,9 @@ class BlockingConnection(object):  # pylint: disable=R0902
         :param pika.frame.Method method_frame: method frame having `method`
             member of type `pika.spec.Connection.Blocked`
         """
+        if self._exception_on_event:
+            self._block()
+
         self._ready_events.append(
             _ConnectionBlockedEvt(user_callback, method_frame))
 
@@ -1185,9 +1184,14 @@ class BlockingChannel(object):  # pylint: disable=R0904,R0902
         if not waiters:
             waiters = self._ALWAYS_READY_WAITERS
 
-        self._connection._flush_output(
-            self._channel_closed_by_broker_result.is_ready,
-            *waiters)
+        try:
+            self._connection._flush_output(
+                self._channel_closed_by_broker_result.is_ready,
+                *waiters)
+        except exceptions.BlockedException:
+            self._impl._blocked.clear()
+            self._impl._blocking = None
+            raise
 
         if self._channel_closed_by_broker_result:
             # Channel was force-closed by broker
