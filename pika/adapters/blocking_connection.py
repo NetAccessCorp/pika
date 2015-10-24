@@ -338,17 +338,23 @@ class BlockingConnection(object):  # pylint: disable=R0902
 
         # Set to True when block event is received, back to False on unblock
         self._is_blocked = False
-        self._exception_on_event = exception_on_event
+        if exception_on_event:
+            self.enable_event_exceptions()
 
         self._process_io_for_connection_setup()
 
-    def _block(self):
+    def enable_event_exceptions(self):
+        self.add_on_connection_blocked_callback(self._block)
+        self.add_on_connection_unblocked_callback(self._unblock)
+
+    def _block(self, method):
         self._is_blocked = True
         self._cleanup()
-        raise exceptions.BlockedException()
+        raise exceptions.ConnectionBlocked()
 
-    def _unblock(self):
+    def _unblock(self, method):
         self._is_blocked = False
+        raise exceptions.ConnectionUnblocked()
 
     def _cleanup(self):
         """Clean up members that might inhibit garbage collection"""
@@ -496,8 +502,6 @@ class BlockingConnection(object):  # pylint: disable=R0902
         :param pika.frame.Method method_frame: method frame having `method`
             member of type `pika.spec.Connection.Blocked`
         """
-        if self._exception_on_event:
-            self._block()
 
         self._ready_events.append(
             _ConnectionBlockedEvt(user_callback, method_frame))
@@ -763,8 +767,6 @@ class BlockingConnection(object):  # pylint: disable=R0902
         :rtype: bool
 
         """
-        return self._impl.basic_nack
-
     @property
     def consumer_cancel_notify_supported(self):  # pylint: disable=C0103
         """Specifies if the server supports consumer cancel notification on the
@@ -1192,7 +1194,7 @@ class BlockingChannel(object):  # pylint: disable=R0904,R0902
             self._connection._flush_output(
                 self._channel_closed_by_broker_result.is_ready,
                 *waiters)
-        except exceptions.BlockedException:
+        except exceptions.ConnectionBlocked:
             self._impl._blocked.clear()
             self._impl._blocking = None
             raise
