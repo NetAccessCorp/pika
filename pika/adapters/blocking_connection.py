@@ -338,7 +338,8 @@ class BlockingConnection(object):  # pylint: disable=R0902
 
         # Set to True when block event is received, back to False on unblock
         self._is_blocked = False
-        if exception_on_event:
+        self._exception_on_event = exception_on_event
+        if self._exception_on_event:
             self.enable_event_exceptions()
 
         self._process_io_for_connection_setup()
@@ -350,11 +351,14 @@ class BlockingConnection(object):  # pylint: disable=R0902
     def _block(self, method):
         self._is_blocked = True
         self._cleanup()
-        raise exceptions.ConnectionBlocked()
+        raise exceptions.ConnectionBlockedEvent()
 
     def _unblock(self, method):
         self._is_blocked = False
-        raise exceptions.ConnectionUnblocked()
+        raise exceptions.ConnectionUnblockedEvent()
+
+    def _timer_event(self, timer):
+        raise exceptions.TimerEvent(timer_id=timer.timer_id)
 
     def _cleanup(self):
         """Clean up members that might inhibit garbage collection"""
@@ -571,7 +575,7 @@ class BlockingConnection(object):  # pylint: disable=R0902
         self._impl.add_on_connection_unblocked_callback(
             functools.partial(self._on_connection_unblocked, callback_method))
 
-    def add_timeout(self, deadline, callback_method):
+    def add_timeout(self, deadline, callback_method=None):
         """Create a single-shot timer to fire after deadline seconds. Do not
         confuse with Tornado's timeout where you pass in the time you want to
         have your callback called. Only pass in the seconds until it's to be
@@ -589,12 +593,21 @@ class BlockingConnection(object):  # pylint: disable=R0902
         :returns: opaque timer id
 
         """
-        if not callable(callback_method):
+        if not callable(callback_method) and not self._exception_on_event:
             raise ValueError(
                 'callback_method parameter must be callable, but got %r'
                 % (callback_method,))
+        elif callable(callback_method) and self._exception_on_event:
+            raise ValueError(
+                'callback_method parameter must not be passed when '
+                'event exceptions are enabled')
 
         evt = _TimerEvt(callback=callback_method)
+
+        if self._exception_on_event:
+            evt._callback = functools.partial(
+                self._timer_event, timer=evt)
+
         timer_id = self._impl.add_timeout(
             deadline,
             functools.partial(self._on_timer_ready, evt))
@@ -1194,7 +1207,7 @@ class BlockingChannel(object):  # pylint: disable=R0904,R0902
             self._connection._flush_output(
                 self._channel_closed_by_broker_result.is_ready,
                 *waiters)
-        except exceptions.ConnectionBlocked:
+        except exceptions.ConnectionBlockedEvent:
             self._impl._blocked.clear()
             self._impl._blocking = None
             raise

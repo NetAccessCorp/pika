@@ -66,21 +66,6 @@ class ConnectionClosed(AMQPConnectionError):
             return 'The AMQP connection was closed: %s' % (self.args,)
 
 
-class ConnectionBlocked(AMQPConnectionError):
-    """This exception is raised when a connection gets blocked by RabbitMQ
-
-    Used by BlockingConnection
-    """
-
-    def __repr__(self):
-        return 'The connection has been blocked'
-
-
-class ConnectionUnblocked(AMQPConnectionError):
-    def __repr__(self):
-        return 'The connection has been unblocked'
-
-
 class AMQPChannelError(AMQPError):
 
     def __repr__(self):
@@ -250,3 +235,34 @@ class ShortStringTooLong(AMQPError):
     def __repr__(self):
         return ('AMQP Short String can contain up to 255 bytes: '
                 '%.300s' % self.args[0])
+
+
+class AMQPConnectionEvent(Exception):
+
+    def __repr__(self):
+        return 'An unspecified Connection Event has occurred'
+
+
+class ConnectionBlockedEvent(AMQPConnectionEvent):
+    """This exception is raised when a connection gets blocked by RabbitMQ
+
+    Used by BlockingConnection
+    """
+
+    def __repr__(self):
+        return 'The connection has been blocked'
+
+
+class ConnectionUnblockedEvent(AMQPConnectionEvent):
+    def __repr__(self):
+        return 'The connection has been unblocked'
+
+
+class TimerEvent(AMQPConnectionEvent):
+
+    def __init__(self, timer_id, *args, **kwargs):
+        self.timer_id = timer_id
+        AMQPConnectionError.__init__(self, *args, **kwargs)
+
+    def __repr__(self):
+        return 'A Timer event has happened'
