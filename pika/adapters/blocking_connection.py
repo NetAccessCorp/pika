@@ -337,18 +337,18 @@ class BlockingConnection(object):  # pylint: disable=R0902
             stop_ioloop_on_close=False)
 
         # Set to True when block event is received, back to False on unblock
-        self._blocked = False
+        self._is_blocked = False
         self._exception_on_event = exception_on_event
 
         self._process_io_for_connection_setup()
 
     def _block(self):
-        self._blocked = True
+        self._is_blocked = True
         self._cleanup()
         raise exceptions.BlockedException()
 
     def _unblock(self):
-        self._blocked = False
+        self._is_blocked = False
 
     def _cleanup(self):
         """Clean up members that might inhibit garbage collection"""
@@ -740,6 +740,10 @@ class BlockingConnection(object):  # pylint: disable=R0902
         Returns a boolean reporting the current connection state.
         """
         return self._impl.is_closing
+
+    @property
+    def is_blocked(self):
+        return self._is_blocked
 
     @property
     def is_open(self):
