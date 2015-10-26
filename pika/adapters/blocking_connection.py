@@ -431,6 +431,7 @@ class BlockingConnection(object):  # pylint: disable=R0902
         while not is_done():
             self._impl.ioloop.poll()
             self._impl.ioloop.process_timeouts()
+            self._dispatch_connection_events()
 
         if self._closed_result.ready:
             try:
