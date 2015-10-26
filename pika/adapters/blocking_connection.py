@@ -344,10 +344,6 @@ class BlockingConnection(object):  # pylint: disable=R0902
 
         self._process_io_for_connection_setup()
 
-    def enable_event_exceptions(self):
-        self.add_on_connection_blocked_callback(self._block)
-        self.add_on_connection_unblocked_callback(self._unblock)
-
     def _block(self, method):
         self._is_blocked = True
         self._cleanup()
@@ -635,6 +631,10 @@ class BlockingConnection(object):  # pylint: disable=R0902
             return
 
         del self._ready_events[index_to_remove]
+
+    def enable_event_exceptions(self):
+        self.add_on_connection_blocked_callback(self._block)
+        self.add_on_connection_unblocked_callback(self._unblock)
 
     def close(self, reply_code=200, reply_text='Normal shutdown'):
         """Disconnect from RabbitMQ. If there are any open channels, it will
