@@ -780,7 +780,7 @@ class BlockingConnection(object):  # pylint: disable=R0902
         :rtype: bool
 
         """
-         return self._impl.basic_nack
+        return self._impl.basic_nack
 
     @property
     def consumer_cancel_notify_supported(self):  # pylint: disable=C0103
